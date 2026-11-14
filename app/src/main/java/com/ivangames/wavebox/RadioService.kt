@@ -16,7 +16,6 @@ class RadioService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
 
-        // Создаём плеер с настройками для фона
         val player = ExoPlayer.Builder(this)
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -25,13 +24,11 @@ class RadioService : MediaSessionService() {
                     .build(),
                 true
             )
-            .setHandleAudioBecomingNoisy(true) // Пауза при выдёргивании наушников
+            .setHandleAudioBecomingNoisy(true)
             .build()
 
-        // Создаём сессию. Она сама подтянет название трека в уведомление.
         mediaSession = MediaSession.Builder(this, player).build()
 
-        // Настраиваем уведомление (иконка, канал, id)
         val notificationProvider = DefaultMediaNotificationProvider.Builder(this)
             .setChannelName("WaveBox Radio")
             .setNotificationId(1001)
