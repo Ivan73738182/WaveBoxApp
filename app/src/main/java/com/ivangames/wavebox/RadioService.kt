@@ -1,7 +1,5 @@
 package com.ivangames.wavebox
 
-import android.app.PendingIntent
-import android.content.Intent
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.exoplayer.ExoPlayer
@@ -16,6 +14,7 @@ class RadioService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
 
+        // Создаём плеер с настройками для фона
         val player = ExoPlayer.Builder(this)
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -27,10 +26,12 @@ class RadioService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .build()
 
+        // Создаём сессию
         mediaSession = MediaSession.Builder(this, player).build()
 
+        // Настраиваем уведомление
         val notificationProvider = DefaultMediaNotificationProvider.Builder(this)
-            .setChannelName("WaveBox Radio")
+            .setChannelName(1001) // <-- ИСПРАВЛЕНО: здесь нужен Int (ID канала)
             .setNotificationId(1001)
             .build()
         setMediaNotificationProvider(notificationProvider)
