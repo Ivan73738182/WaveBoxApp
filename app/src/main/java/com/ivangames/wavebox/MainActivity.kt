@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
@@ -21,6 +22,11 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
@@ -30,11 +36,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var stopButton: ImageButton
     private lateinit var nowPlayingText: TextView
     private lateinit var adapter: StationAdapter
+    private var stations: List<Station> = emptyList()
 
-    private val stations = listOf(
-        Station("Европа Плюс", "Популярная музыка", "http://ep128.hostingradio.ru:8030/ep128"),
-        Station("Ретро FM", "Музыка 80-х и 90-х", "http://retroserver.streamr.ru:8043/retro256.mp3")
-    )
+    // Ссылка на наш сервер Render
+    private val serverUrl = "https://waveboxserver.onrender.com/stations"
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -61,15 +66,22 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Инициализируем адаптер с пустым списком (загрузим позже)
+        recyclerView.layoutManager = LinearLayoutManager(this)
+        adapter = StationAdapter(emptyList()) { station ->
+            playStation(station)
+        }
+        recyclerView.adapter = adapter
+
+        // Загружаем станции с сервера
+        loadStationsFromServer()
+
         val sessionToken = SessionToken(this, ComponentName(this, RadioService::class.java))
         controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
 
         controllerFuture.addListener({
             controller = controllerFuture.get()
-            
             updatePlayPauseButton(controller?.isPlaying == true)
-            // Восстанавливаем выделение текущей станции при открытии
-            updateSelectedStation(controller?.currentMediaItem?.mediaMetadata?.title?.toString())
 
             controller?.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -79,7 +91,7 @@ class MainActivity : AppCompatActivity() {
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     val title = mediaItem?.mediaMetadata?.title?.toString() ?: "Неизвестно"
                     nowPlayingText.text = title
-                    updateSelectedStation(title)
+                    adapter.setPlayingStation(title)
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
@@ -88,12 +100,6 @@ class MainActivity : AppCompatActivity() {
                 }
             })
         }, MoreExecutors.directExecutor())
-
-        recyclerView.layoutManager = LinearLayoutManager(this)
-        adapter = StationAdapter(stations) { station ->
-            playStation(station)
-        }
-        recyclerView.adapter = adapter
 
         playPauseButton.setOnClickListener {
             controller?.let {
@@ -105,8 +111,47 @@ class MainActivity : AppCompatActivity() {
             controller?.stop()
             controller?.clearMediaItems()
             nowPlayingText.text = "Выберите станцию"
-            updateSelectedStation(null)
+            adapter.setPlayingStation(null)
             updatePlayPauseButton(false)
+        }
+    }
+
+    private fun loadStationsFromServer() {
+        Executors.newSingleThreadExecutor().execute {
+            try {
+                val client = OkHttpClient()
+                val request = Request.Builder().url(serverUrl).build()
+                val response = client.newCall(request).execute()
+                
+                if (response.isSuccessful) {
+                    val json = response.body?.string()
+                    val type = object : TypeToken<List<Station>>() {}.type
+                    val loadedStations: List<Station> = Gson().fromJson(json, type)
+                    
+                    runOnUiThread {
+                        stations = loadedStations
+                        adapter = StationAdapter(stations) { station ->
+                            playStation(station)
+                        }
+                        findViewById<RecyclerView>(R.id.recyclerView).adapter = adapter
+                    }
+                } else {
+                    Log.e("WaveBox", "Server error: ${response.code}")
+                }
+            } catch (e: Exception) {
+                Log.e("WaveBox", "Error loading stations", e)
+                // Если сервер не ответил, показываем станции по умолчанию
+                runOnUiThread {
+                    stations = listOf(
+                        Station("Европа Плюс", "Популярная музыка", "http://ep128.hostingradio.ru:8030/ep128"),
+                        Station("Ретро FM", "Музыка 80-х и 90-х", "http://retroserver.streamr.ru:8043/retro256.mp3")
+                    )
+                    adapter = StationAdapter(stations) { station ->
+                        playStation(station)
+                    }
+                    findViewById<RecyclerView>(R.id.recyclerView).adapter = adapter
+                }
+            }
         }
     }
 
@@ -116,10 +161,6 @@ class MainActivity : AppCompatActivity() {
         } else {
             playPauseButton.setImageResource(android.R.drawable.ic_media_play)
         }
-    }
-
-    private fun updateSelectedStation(currentTitle: String?) {
-        adapter.setPlayingStation(currentTitle)
     }
 
     private fun playStation(station: Station) {
@@ -138,7 +179,7 @@ class MainActivity : AppCompatActivity() {
         controller?.setMediaItem(mediaItem)
         controller?.prepare()
         controller?.play()
-        updateSelectedStation(station.name)
+        adapter.setPlayingStation(station.name)
     }
 
     override fun onDestroy() {
