@@ -2,10 +2,12 @@ package com.ivangames.wavebox
 
 import android.Manifest
 import android.content.ComponentName
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.ImageButton
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -53,6 +55,16 @@ class MainActivity : AppCompatActivity() {
         nowPlayingText = findViewById(R.id.nowPlayingText)
         tabLayout = findViewById(R.id.tabLayout)
         val recyclerView = findViewById<RecyclerView>(R.id.recyclerView)
+        val playerBar = findViewById<LinearLayout>(R.id.playerBar)
+
+        // Клик по панели открывает полноэкранный плеер
+        playerBar.setOnClickListener {
+            if (controller?.currentMediaItem != null) {
+                startActivity(Intent(this, PlayerActivity::class.java))
+            } else {
+                Toast.makeText(this, "Сначала выберите станцию", Toast.LENGTH_SHORT).show()
+            }
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
@@ -62,7 +74,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Настраиваем табы
         tabLayout.addTab(tabLayout.newTab().setText("Все станции"))
         tabLayout.addTab(tabLayout.newTab().setText("Избранное"))
 
@@ -130,7 +141,6 @@ class MainActivity : AppCompatActivity() {
         } else {
             repository.addFavorite(station)
         }
-        // Если мы на вкладке "Избранное", обновляем список
         if (tabLayout.selectedTabPosition == 1) {
             adapter.updateStations(repository.getFavorites())
         }
