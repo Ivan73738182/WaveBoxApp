@@ -1,5 +1,6 @@
 package com.ivangames.wavebox
 
+import android.content.ComponentName
 import android.os.Bundle
 import android.widget.ImageButton
 import android.widget.TextView
@@ -8,13 +9,17 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.MoreExecutors
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var player: ExoPlayer
+    private lateinit var controllerFuture: ListenableFuture<MediaController>
+    private var controller: MediaController? = null
     private lateinit var playPauseButton: ImageButton
     private lateinit var nowPlayingText: TextView
 
@@ -31,19 +36,33 @@ class MainActivity : AppCompatActivity() {
         nowPlayingText = findViewById(R.id.nowPlayingText)
         val recyclerView = findViewById<RecyclerView>(R.id.recyclerView)
 
-        player = ExoPlayer.Builder(this).build()
+        // Подключаемся к сервису
+        val sessionToken = SessionToken(this, ComponentName(this, RadioService::class.java))
+        controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
 
-        // Слушаем ошибки плеера
-        player.addListener(object : Player.Listener {
-            override fun onPlayerError(error: PlaybackException) {
-                super.onPlayerError(error)
-                runOnUiThread {
+        controllerFuture.addListener({
+            controller = controllerFuture.get()
+            
+            // Слушаем состояние плеера для обновления кнопки
+            controller?.addListener(object : Player.Listener {
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (isPlaying) {
+                        playPauseButton.setImageResource(android.R.drawable.ic_media_pause)
+                    } else {
+                        playPauseButton.setImageResource(android.R.drawable.ic_media_play)
+                    }
+                }
+
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    // Обновляем текст при смене трека (если нужно)
+                }
+
+                override fun onPlayerError(error: PlaybackException) {
                     Toast.makeText(this@MainActivity, "Ошибка: ${error.errorCodeName}", Toast.LENGTH_LONG).show()
                     nowPlayingText.text = "Ошибка воспроизведения"
-                    playPauseButton.setImageResource(android.R.drawable.ic_media_play)
                 }
-            }
-        })
+            })
+        }, MoreExecutors.directExecutor())
 
         recyclerView.layoutManager = LinearLayoutManager(this)
         recyclerView.adapter = StationAdapter(stations) { station ->
@@ -51,12 +70,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         playPauseButton.setOnClickListener {
-            if (player.isPlaying) {
-                player.pause()
-                playPauseButton.setImageResource(android.R.drawable.ic_media_play)
-            } else {
-                player.play()
-                playPauseButton.setImageResource(android.R.drawable.ic_media_pause)
+            controller?.let {
+                if (it.isPlaying) it.pause() else it.play()
             }
         }
     }
@@ -64,14 +79,14 @@ class MainActivity : AppCompatActivity() {
     private fun playStation(station: Station) {
         nowPlayingText.text = "Загрузка: ${station.name}..."
         val mediaItem = MediaItem.fromUri(station.url)
-        player.setMediaItem(mediaItem)
-        player.prepare()
-        player.play()
-        playPauseButton.setImageResource(android.R.drawable.ic_media_pause)
+        controller?.setMediaItem(mediaItem)
+        controller?.prepare()
+        controller?.play()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        player.release()
+        // Отключаемся от сервиса при закрытии экрана (музыка продолжит играть)
+        MediaController.releaseFuture(controllerFuture)
     }
 }
