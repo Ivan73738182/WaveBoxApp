@@ -7,6 +7,7 @@ import androidx.media3.common.C
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.DefaultMediaNotificationProvider
 
 class RadioService : MediaSessionService() {
 
@@ -15,20 +16,27 @@ class RadioService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
 
-        // Создаём плеер с настройками для фонового воспроизведения
+        // Плеер для фона
         val player = ExoPlayer.Builder(this)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                     .build(),
-                true // Обрабатывать аудиофокус (пауза при звонке)
+                true
             )
-            .setHandleAudioBecomingNoisy(true) // Пауза при выдёргивании наушников
+            .setHandleAudioBecomingNoisy(true)
             .build()
 
-        // Создаём сессию, которая свяжет плеер с уведомлением
+        // Сессия с уведомлением
         mediaSession = MediaSession.Builder(this, player).build()
+
+        // Настраиваем красивое уведомление
+        val notificationProvider = DefaultMediaNotificationProvider.Builder(this)
+            .setChannelName("WaveBox Radio")
+            .setNotificationId(1001)
+            .build()
+        setMediaNotificationProvider(notificationProvider)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {

@@ -1,11 +1,16 @@
 package com.ivangames.wavebox
 
+import android.Manifest
 import android.content.ComponentName
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -28,6 +33,15 @@ class MainActivity : AppCompatActivity() {
         Station("Ретро FM", "Музыка 80-х и 90-х", "http://retroserver.streamr.ru:8043/retro256.mp3")
     )
 
+    // Запрос разрешения на уведомления (Android 13+)
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (!isGranted) {
+            Toast.makeText(this, "Без разрешения уведомление не появится", Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -36,6 +50,15 @@ class MainActivity : AppCompatActivity() {
         nowPlayingText = findViewById(R.id.nowPlayingText)
         val recyclerView = findViewById<RecyclerView>(R.id.recyclerView)
 
+        // Запрашиваем разрешение на уведомления, если нужно
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
         // Подключаемся к сервису
         val sessionToken = SessionToken(this, ComponentName(this, RadioService::class.java))
         controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
@@ -43,7 +66,6 @@ class MainActivity : AppCompatActivity() {
         controllerFuture.addListener({
             controller = controllerFuture.get()
             
-            // Слушаем состояние плеера для обновления кнопки
             controller?.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     if (isPlaying) {
@@ -51,10 +73,6 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         playPauseButton.setImageResource(android.R.drawable.ic_media_play)
                     }
-                }
-
-                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                    // Обновляем текст при смене трека (если нужно)
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
@@ -86,7 +104,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // Отключаемся от сервиса при закрытии экрана (музыка продолжит играть)
         MediaController.releaseFuture(controllerFuture)
     }
 }
