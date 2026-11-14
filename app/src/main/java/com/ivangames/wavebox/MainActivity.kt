@@ -27,7 +27,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var controllerFuture: ListenableFuture<MediaController>
     private var controller: MediaController? = null
     private lateinit var playPauseButton: ImageButton
+    private lateinit var stopButton: ImageButton
     private lateinit var nowPlayingText: TextView
+    private lateinit var adapter: StationAdapter
 
     private val stations = listOf(
         Station("Европа Плюс", "Популярная музыка", "http://ep128.hostingradio.ru:8030/ep128"),
@@ -47,6 +49,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         playPauseButton = findViewById(R.id.playPauseButton)
+        stopButton = findViewById(R.id.stopButton)
         nowPlayingText = findViewById(R.id.nowPlayingText)
         val recyclerView = findViewById<RecyclerView>(R.id.recyclerView)
 
@@ -58,15 +61,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Подключаемся к сервису
         val sessionToken = SessionToken(this, ComponentName(this, RadioService::class.java))
         controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
 
         controllerFuture.addListener({
             controller = controllerFuture.get()
             
-            // Обновляем UI, если музыка уже играет (при повторном открытии)
             updatePlayPauseButton(controller?.isPlaying == true)
+            // Восстанавливаем выделение текущей станции при открытии
+            updateSelectedStation(controller?.currentMediaItem?.mediaMetadata?.title?.toString())
 
             controller?.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -74,9 +77,9 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                    // Обновляем название текущей станции внизу экрана
                     val title = mediaItem?.mediaMetadata?.title?.toString() ?: "Неизвестно"
                     nowPlayingText.text = title
+                    updateSelectedStation(title)
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
@@ -87,14 +90,23 @@ class MainActivity : AppCompatActivity() {
         }, MoreExecutors.directExecutor())
 
         recyclerView.layoutManager = LinearLayoutManager(this)
-        recyclerView.adapter = StationAdapter(stations) { station ->
+        adapter = StationAdapter(stations) { station ->
             playStation(station)
         }
+        recyclerView.adapter = adapter
 
         playPauseButton.setOnClickListener {
             controller?.let {
                 if (it.isPlaying) it.pause() else it.play()
             }
+        }
+
+        stopButton.setOnClickListener {
+            controller?.stop()
+            controller?.clearMediaItems()
+            nowPlayingText.text = "Выберите станцию"
+            updateSelectedStation(null)
+            updatePlayPauseButton(false)
         }
     }
 
@@ -104,6 +116,10 @@ class MainActivity : AppCompatActivity() {
         } else {
             playPauseButton.setImageResource(android.R.drawable.ic_media_play)
         }
+    }
+
+    private fun updateSelectedStation(currentTitle: String?) {
+        adapter.setPlayingStation(currentTitle)
     }
 
     private fun playStation(station: Station) {
@@ -122,11 +138,11 @@ class MainActivity : AppCompatActivity() {
         controller?.setMediaItem(mediaItem)
         controller?.prepare()
         controller?.play()
+        updateSelectedStation(station.name)
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        // Отключаемся от сервиса, но музыка продолжает играть
         MediaController.releaseFuture(controllerFuture)
     }
 }

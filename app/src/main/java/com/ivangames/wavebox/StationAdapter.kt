@@ -1,5 +1,6 @@
 package com.ivangames.wavebox
 
+import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -13,10 +14,17 @@ class StationAdapter(
     private val onClick: (Station) -> Unit
 ) : RecyclerView.Adapter<StationAdapter.ViewHolder>() {
 
+    private var playingStationName: String? = null
+
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val name: TextView = view.findViewById(R.id.stationName)
         val desc: TextView = view.findViewById(R.id.stationDesc)
         val icon: TextView = view.findViewById(R.id.stationIcon)
+    }
+
+    fun setPlayingStation(name: String?) {
+        playingStationName = name
+        notifyDataSetChanged()
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -29,6 +37,16 @@ class StationAdapter(
         val station = stations[position]
         holder.name.text = station.name
         holder.desc.text = station.desc
+        
+        // Подсвечиваем активную станцию
+        if (station.name == playingStationName) {
+            holder.name.setTextColor(Color.parseColor("#4CAF50")) // Зелёный
+            holder.icon.text = "▶️"
+        } else {
+            holder.name.setTextColor(Color.WHITE)
+            holder.icon.text = "📻"
+        }
+
         holder.itemView.setOnClickListener { onClick(station) }
     }
 
