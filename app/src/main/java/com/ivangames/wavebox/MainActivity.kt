@@ -5,7 +5,6 @@ import android.content.ComponentName
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.util.Log
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
@@ -20,13 +19,9 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.tabs.TabLayout
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
@@ -36,26 +31,27 @@ class MainActivity : AppCompatActivity() {
     private lateinit var stopButton: ImageButton
     private lateinit var nowPlayingText: TextView
     private lateinit var adapter: StationAdapter
-    private var stations: List<Station> = emptyList()
+    private lateinit var repository: StationRepository
+    private lateinit var tabLayout: TabLayout
 
-    // Ссылка на наш сервер Render
-    private val serverUrl = "https://waveboxserver.onrender.com/stations"
+    private val stations = listOf(
+        Station("Европа Плюс", "Популярная музыка", "http://ep128.hostingradio.ru:8030/ep128"),
+        Station("Ретро FM", "Музыка 80-х и 90-х", "http://retroserver.streamr.ru:8043/retro256.mp3")
+    )
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { isGranted: Boolean ->
-        if (!isGranted) {
-            Toast.makeText(this, "Без разрешения уведомление не появится", Toast.LENGTH_LONG).show()
-        }
-    }
+    ) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        repository = StationRepository(this)
         playPauseButton = findViewById(R.id.playPauseButton)
         stopButton = findViewById(R.id.stopButton)
         nowPlayingText = findViewById(R.id.nowPlayingText)
+        tabLayout = findViewById(R.id.tabLayout)
         val recyclerView = findViewById<RecyclerView>(R.id.recyclerView)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -66,15 +62,29 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Инициализируем адаптер с пустым списком (загрузим позже)
+        // Настраиваем табы
+        tabLayout.addTab(tabLayout.newTab().setText("Все станции"))
+        tabLayout.addTab(tabLayout.newTab().setText("Избранное"))
+
         recyclerView.layoutManager = LinearLayoutManager(this)
-        adapter = StationAdapter(emptyList()) { station ->
-            playStation(station)
-        }
+        adapter = StationAdapter(
+            stations,
+            { station -> playStation(station) },
+            { station -> toggleFavorite(station) },
+            repository
+        )
         recyclerView.adapter = adapter
 
-        // Загружаем станции с сервера
-        loadStationsFromServer()
+        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                when (tab?.position) {
+                    0 -> adapter.updateStations(stations)
+                    1 -> adapter.updateStations(repository.getFavorites())
+                }
+            }
+            override fun onTabUnselected(tab: TabLayout.Tab?) {}
+            override fun onTabReselected(tab: TabLayout.Tab?) {}
+        })
 
         val sessionToken = SessionToken(this, ComponentName(this, RadioService::class.java))
         controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
@@ -87,13 +97,11 @@ class MainActivity : AppCompatActivity() {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     updatePlayPauseButton(isPlaying)
                 }
-
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     val title = mediaItem?.mediaMetadata?.title?.toString() ?: "Неизвестно"
                     nowPlayingText.text = title
                     adapter.setPlayingStation(title)
                 }
-
                 override fun onPlayerError(error: PlaybackException) {
                     Toast.makeText(this@MainActivity, "Ошибка: ${error.errorCodeName}", Toast.LENGTH_LONG).show()
                     nowPlayingText.text = "Ошибка воспроизведения"
@@ -116,42 +124,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadStationsFromServer() {
-        Executors.newSingleThreadExecutor().execute {
-            try {
-                val client = OkHttpClient()
-                val request = Request.Builder().url(serverUrl).build()
-                val response = client.newCall(request).execute()
-                
-                if (response.isSuccessful) {
-                    val json = response.body?.string()
-                    val type = object : TypeToken<List<Station>>() {}.type
-                    val loadedStations: List<Station> = Gson().fromJson(json, type)
-                    
-                    runOnUiThread {
-                        stations = loadedStations
-                        adapter = StationAdapter(stations) { station ->
-                            playStation(station)
-                        }
-                        findViewById<RecyclerView>(R.id.recyclerView).adapter = adapter
-                    }
-                } else {
-                    Log.e("WaveBox", "Server error: ${response.code}")
-                }
-            } catch (e: Exception) {
-                Log.e("WaveBox", "Error loading stations", e)
-                // Если сервер не ответил, показываем станции по умолчанию
-                runOnUiThread {
-                    stations = listOf(
-                        Station("Европа Плюс", "Популярная музыка", "http://ep128.hostingradio.ru:8030/ep128"),
-                        Station("Ретро FM", "Музыка 80-х и 90-х", "http://retroserver.streamr.ru:8043/retro256.mp3")
-                    )
-                    adapter = StationAdapter(stations) { station ->
-                        playStation(station)
-                    }
-                    findViewById<RecyclerView>(R.id.recyclerView).adapter = adapter
-                }
-            }
+    private fun toggleFavorite(station: Station) {
+        if (repository.isFavorite(station)) {
+            repository.removeFavorite(station)
+        } else {
+            repository.addFavorite(station)
+        }
+        // Если мы на вкладке "Избранное", обновляем список
+        if (tabLayout.selectedTabPosition == 1) {
+            adapter.updateStations(repository.getFavorites())
         }
     }
 
@@ -165,17 +146,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun playStation(station: Station) {
         nowPlayingText.text = "Загрузка: ${station.name}..."
-        
         val mediaMetadata = MediaMetadata.Builder()
             .setTitle(station.name)
             .setArtist(station.desc)
             .build()
-
         val mediaItem = MediaItem.Builder()
             .setUri(station.url)
             .setMediaMetadata(mediaMetadata)
             .build()
-
         controller?.setMediaItem(mediaItem)
         controller?.prepare()
         controller?.play()

@@ -12,7 +12,7 @@
         android:layout_width="48dp"
         android:layout_height="48dp"
         android:gravity="center"
-        android:textSize="24sp"
+        android:textSize="32sp"
         android:text="📻" />
 
     <LinearLayout
@@ -37,4 +37,13 @@
             android:textColor="#AAAAAA"
             android:textSize="14sp" />
     </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/favoriteButton"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@android:drawable/btn_star_big_off"
+        android:tint="#888888" />
+
 </LinearLayout>

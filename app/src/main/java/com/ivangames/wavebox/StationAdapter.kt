@@ -4,14 +4,17 @@ import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageButton
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 
 data class Station(val name: String, val desc: String, val url: String)
 
 class StationAdapter(
-    private val stations: List<Station>,
-    private val onClick: (Station) -> Unit
+    private var stations: List<Station>,
+    private val onClick: (Station) -> Unit,
+    private val onFavoriteToggle: (Station) -> Unit,
+    private val repository: StationRepository
 ) : RecyclerView.Adapter<StationAdapter.ViewHolder>() {
 
     private var playingStationName: String? = null
@@ -20,6 +23,12 @@ class StationAdapter(
         val name: TextView = view.findViewById(R.id.stationName)
         val desc: TextView = view.findViewById(R.id.stationDesc)
         val icon: TextView = view.findViewById(R.id.stationIcon)
+        val favoriteBtn: ImageButton = view.findViewById(R.id.favoriteButton)
+    }
+
+    fun updateStations(newStations: List<Station>) {
+        stations = newStations
+        notifyDataSetChanged()
     }
 
     fun setPlayingStation(name: String?) {
@@ -38,13 +47,26 @@ class StationAdapter(
         holder.name.text = station.name
         holder.desc.text = station.desc
         
-        // Подсвечиваем активную станцию
         if (station.name == playingStationName) {
-            holder.name.setTextColor(Color.parseColor("#4CAF50")) // Зелёный
+            holder.name.setTextColor(Color.parseColor("#4CAF50"))
             holder.icon.text = "▶️"
         } else {
             holder.name.setTextColor(Color.WHITE)
             holder.icon.text = "📻"
+        }
+
+        // Настраиваем сердечко
+        if (repository.isFavorite(station)) {
+            holder.favoriteBtn.setImageResource(android.R.drawable.btn_star_big_on)
+            holder.favoriteBtn.setColorFilter(Color.parseColor("#FF4081"))
+        } else {
+            holder.favoriteBtn.setImageResource(android.R.drawable.btn_star_big_off)
+            holder.favoriteBtn.setColorFilter(Color.GRAY)
+        }
+
+        holder.favoriteBtn.setOnClickListener {
+            onFavoriteToggle(station)
+            notifyItemChanged(position) // Обновляем иконку
         }
 
         holder.itemView.setOnClickListener { onClick(station) }
