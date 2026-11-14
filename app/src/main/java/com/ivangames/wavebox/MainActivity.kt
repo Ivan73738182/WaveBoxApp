@@ -58,19 +58,25 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Подключаемся к сервису
         val sessionToken = SessionToken(this, ComponentName(this, RadioService::class.java))
         controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
 
         controllerFuture.addListener({
             controller = controllerFuture.get()
             
+            // Обновляем UI, если музыка уже играет (при повторном открытии)
+            updatePlayPauseButton(controller?.isPlaying == true)
+
             controller?.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    if (isPlaying) {
-                        playPauseButton.setImageResource(android.R.drawable.ic_media_pause)
-                    } else {
-                        playPauseButton.setImageResource(android.R.drawable.ic_media_play)
-                    }
+                    updatePlayPauseButton(isPlaying)
+                }
+
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    // Обновляем название текущей станции внизу экрана
+                    val title = mediaItem?.mediaMetadata?.title?.toString() ?: "Неизвестно"
+                    nowPlayingText.text = title
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
@@ -92,10 +98,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun updatePlayPauseButton(isPlaying: Boolean) {
+        if (isPlaying) {
+            playPauseButton.setImageResource(android.R.drawable.ic_media_pause)
+        } else {
+            playPauseButton.setImageResource(android.R.drawable.ic_media_play)
+        }
+    }
+
     private fun playStation(station: Station) {
         nowPlayingText.text = "Загрузка: ${station.name}..."
         
-        // Формируем медиа-элемент с названием и описанием для уведомления
         val mediaMetadata = MediaMetadata.Builder()
             .setTitle(station.name)
             .setArtist(station.desc)
@@ -113,6 +126,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        // Отключаемся от сервиса, но музыка продолжает играть
         MediaController.releaseFuture(controllerFuture)
     }
 }
