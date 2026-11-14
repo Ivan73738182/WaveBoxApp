@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -33,7 +34,6 @@ class MainActivity : AppCompatActivity() {
         Station("Ретро FM", "Музыка 80-х и 90-х", "http://retroserver.streamr.ru:8043/retro256.mp3")
     )
 
-    // Запрос разрешения на уведомления (Android 13+)
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
@@ -50,7 +50,6 @@ class MainActivity : AppCompatActivity() {
         nowPlayingText = findViewById(R.id.nowPlayingText)
         val recyclerView = findViewById<RecyclerView>(R.id.recyclerView)
 
-        // Запрашиваем разрешение на уведомления, если нужно
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED
@@ -59,7 +58,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Подключаемся к сервису
         val sessionToken = SessionToken(this, ComponentName(this, RadioService::class.java))
         controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
 
@@ -96,7 +94,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun playStation(station: Station) {
         nowPlayingText.text = "Загрузка: ${station.name}..."
-        val mediaItem = MediaItem.fromUri(station.url)
+        
+        // Формируем медиа-элемент с названием и описанием для уведомления
+        val mediaMetadata = MediaMetadata.Builder()
+            .setTitle(station.name)
+            .setArtist(station.desc)
+            .build()
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(station.url)
+            .setMediaMetadata(mediaMetadata)
+            .build()
+
         controller?.setMediaItem(mediaItem)
         controller?.prepare()
         controller?.play()
