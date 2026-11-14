@@ -27,18 +27,26 @@ jobs:
     - name: Build with Gradle
       run: gradle assembleRelease
 
+    - name: Decode Keystore
+      run: |
+        echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/release.keystore
+
     - name: Sign APK
-      uses: r0adkll/sign-android-release@v1
-      id: sign_app
-      with:
-        releaseDirectory: app/build/outputs/apk/release
-        signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
-        alias: ${{ secrets.KEY_ALIAS }}
-        keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
-        keyPassword: ${{ secrets.KEY_PASSWORD }}
+      run: |
+        # Находим apksigner в Android SDK
+        BUILD_TOOLS=$(ls /usr/local/lib/android/sdk/build-tools/ | sort -V | tail -n 1)
+        APKSIGNER="/usr/local/lib/android/sdk/build-tools/$BUILD_TOOLS/apksigner"
+        
+        # Подписываем APK
+        $APKSIGNER sign --ks app/release.keystore \
+          --ks-key-alias ${{ secrets.KEY_ALIAS }} \
+          --ks-pass pass:${{ secrets.KEYSTORE_PASSWORD }} \
+          --key-pass pass:${{ secrets.KEY_PASSWORD }} \
+          --out app/build/outputs/apk/release/app-release-signed.apk \
+          app/build/outputs/apk/release/app-release-unsigned.apk
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: WaveBox-release
-        path: ${{ steps.sign_app.outputs.signedReleaseFile }}
+        path: app/build/outputs/apk/release/app-release-signed.apk
