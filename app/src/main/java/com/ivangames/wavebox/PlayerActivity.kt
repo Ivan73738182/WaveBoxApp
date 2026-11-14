@@ -1,7 +1,10 @@
 package com.ivangames.wavebox
 
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
 import android.content.ComponentName
 import android.os.Bundle
+import android.view.animation.LinearInterpolator
 import android.widget.ImageButton
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -20,6 +23,7 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var stationNameText: TextView
     private lateinit var stationDescText: TextView
     private lateinit var bigIcon: TextView
+    private var pulseAnimator: ObjectAnimator? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,19 +38,32 @@ class PlayerActivity : AppCompatActivity() {
 
         backButton.setOnClickListener { finish() }
 
+        // Настраиваем анимацию пульсации
+        val scaleUp = PropertyValuesHolder.ofFloat("scaleX", 1f, 1.1f)
+        val scaleUpY = PropertyValuesHolder.ofFloat("scaleY", 1f, 1.1f)
+        val scaleDown = PropertyValuesHolder.ofFloat("scaleX", 1.1f, 1f)
+        val scaleDownY = PropertyValuesHolder.ofFloat("scaleY", 1.1f, 1f)
+
+        pulseAnimator = ObjectAnimator.ofPropertyValuesHolder(bigIcon, scaleUp, scaleUpY, scaleDown, scaleDownY).apply {
+            duration = 1000
+            repeatCount = ObjectAnimator.INFINITE
+            repeatMode = ObjectAnimator.REVERSE
+            interpolator = LinearInterpolator()
+        }
+
         val sessionToken = SessionToken(this, ComponentName(this, RadioService::class.java))
         controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
 
         controllerFuture.addListener({
             controller = controllerFuture.get()
             
-            // Обновляем UI при старте
             updateUI(controller?.currentMediaItem)
             updatePlayPauseButton(controller?.isPlaying == true)
 
             controller?.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     updatePlayPauseButton(isPlaying)
+                    if (isPlaying) pulseAnimator?.start() else pulseAnimator?.cancel()
                 }
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     updateUI(mediaItem)
@@ -63,7 +80,7 @@ class PlayerActivity : AppCompatActivity() {
         stopButton.setOnClickListener {
             controller?.stop()
             controller?.clearMediaItems()
-            finish() // Закрываем экран плеера, если остановили
+            finish()
         }
     }
 
@@ -72,8 +89,6 @@ class PlayerActivity : AppCompatActivity() {
         val artist = mediaItem?.mediaMetadata?.artist?.toString() ?: ""
         stationNameText.text = title
         stationDescText.text = artist
-        // Можно менять иконку в зависимости от станции, пока оставим радио
-        bigIcon.text = "📻"
     }
 
     private fun updatePlayPauseButton(isPlaying: Boolean) {
@@ -86,6 +101,7 @@ class PlayerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        pulseAnimator?.cancel()
         MediaController.releaseFuture(controllerFuture)
     }
 }

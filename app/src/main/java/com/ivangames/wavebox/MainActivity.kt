@@ -57,10 +57,10 @@ class MainActivity : AppCompatActivity() {
         val recyclerView = findViewById<RecyclerView>(R.id.recyclerView)
         val playerBar = findViewById<LinearLayout>(R.id.playerBar)
 
-        // Клик по панели открывает полноэкранный плеер
         playerBar.setOnClickListener {
             if (controller?.currentMediaItem != null) {
                 startActivity(Intent(this, PlayerActivity::class.java))
+                overridePendingTransition(R.anim.slide_up, R.anim.slide_down)
             } else {
                 Toast.makeText(this, "Сначала выберите станцию", Toast.LENGTH_SHORT).show()
             }
