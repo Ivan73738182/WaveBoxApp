@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -24,6 +25,11 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.tabs.TabLayout
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
@@ -35,11 +41,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adapter: StationAdapter
     private lateinit var repository: StationRepository
     private lateinit var tabLayout: TabLayout
+    private lateinit var recyclerView: RecyclerView
 
-    private val stations = listOf(
-        Station("Европа Плюс", "Популярная музыка", "http://ep128.hostingradio.ru:8030/ep128"),
-        Station("Ретро FM", "Музыка 80-х и 90-х", "http://retroserver.streamr.ru:8043/retro256.mp3")
-    )
+    private var stations: List<Station> = emptyList()
+    private val serverUrl = "https://waveboxserver.onrender.com/stations"
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -54,7 +59,7 @@ class MainActivity : AppCompatActivity() {
         stopButton = findViewById(R.id.stopButton)
         nowPlayingText = findViewById(R.id.nowPlayingText)
         tabLayout = findViewById(R.id.tabLayout)
-        val recyclerView = findViewById<RecyclerView>(R.id.recyclerView)
+        recyclerView = findViewById(R.id.recyclerView)
         val playerBar = findViewById<LinearLayout>(R.id.playerBar)
 
         playerBar.setOnClickListener {
@@ -79,7 +84,7 @@ class MainActivity : AppCompatActivity() {
 
         recyclerView.layoutManager = LinearLayoutManager(this)
         adapter = StationAdapter(
-            stations,
+            emptyList(),
             { station -> playStation(station) },
             { station -> toggleFavorite(station) },
             repository
@@ -96,6 +101,9 @@ class MainActivity : AppCompatActivity() {
             override fun onTabUnselected(tab: TabLayout.Tab?) {}
             override fun onTabReselected(tab: TabLayout.Tab?) {}
         })
+
+        // Загружаем станции с сервера
+        loadStationsFromServer()
 
         val sessionToken = SessionToken(this, ComponentName(this, RadioService::class.java))
         controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
@@ -133,6 +141,46 @@ class MainActivity : AppCompatActivity() {
             adapter.setPlayingStation(null)
             updatePlayPauseButton(false)
         }
+    }
+
+    private fun loadStationsFromServer() {
+        Executors.newSingleThreadExecutor().execute {
+            try {
+                val client = OkHttpClient()
+                val request = Request.Builder().url(serverUrl).build()
+                val response = client.newCall(request).execute()
+
+                if (response.isSuccessful) {
+                    val json = response.body?.string()
+                    val type = object : TypeToken<List<Station>>() {}.type
+                    val loadedStations: List<Station> = Gson().fromJson(json, type)
+
+                    runOnUiThread {
+                        stations = loadedStations
+                        adapter.updateStations(stations)
+                        // Если сервер ответил, но список пустой — покажем сообщение
+                        if (stations.isEmpty()) {
+                            Toast.makeText(this, "Список станций пуст", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } else {
+                    Log.e("WaveBox", "Server error: ${response.code}")
+                    runOnUiThread { showFallbackStations() }
+                }
+            } catch (e: Exception) {
+                Log.e("WaveBox", "Error loading stations", e)
+                runOnUiThread { showFallbackStations() }
+            }
+        }
+    }
+
+    private fun showFallbackStations() {
+        stations = listOf(
+            Station("Европа Плюс", "Популярная музыка", "http://ep128.hostingradio.ru:8030/ep128"),
+            Station("Ретро FM", "Музыка 80-х и 90-х", "http://retroserver.streamr.ru:8043/retro256.mp3")
+        )
+        adapter.updateStations(stations)
+        Toast.makeText(this, "Сервер недоступен, показаны станции по умолчанию", Toast.LENGTH_LONG).show()
     }
 
     private fun toggleFavorite(station: Station) {
