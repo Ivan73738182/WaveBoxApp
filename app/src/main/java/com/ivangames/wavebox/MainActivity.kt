@@ -41,7 +41,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adapter: StationAdapter
     private lateinit var repository: StationRepository
     private lateinit var tabLayout: TabLayout
-    private lateinit var recyclerView: RecyclerView
 
     private var stations: List<Station> = emptyList()
     private val serverUrl = "https://waveboxserver.onrender.com/stations"
@@ -59,7 +58,7 @@ class MainActivity : AppCompatActivity() {
         stopButton = findViewById(R.id.stopButton)
         nowPlayingText = findViewById(R.id.nowPlayingText)
         tabLayout = findViewById(R.id.tabLayout)
-        recyclerView = findViewById(R.id.recyclerView)
+        val recyclerView = findViewById<RecyclerView>(R.id.recyclerView)
         val playerBar = findViewById<LinearLayout>(R.id.playerBar)
 
         playerBar.setOnClickListener {
@@ -85,7 +84,7 @@ class MainActivity : AppCompatActivity() {
         recyclerView.layoutManager = LinearLayoutManager(this)
         adapter = StationAdapter(
             emptyList(),
-            { station -> playStation(station) },
+            { station -> playStationSafe(station) },
             { station -> toggleFavorite(station) },
             repository
         )
@@ -102,7 +101,6 @@ class MainActivity : AppCompatActivity() {
             override fun onTabReselected(tab: TabLayout.Tab?) {}
         })
 
-        // Загружаем станции с сервера
         loadStationsFromServer()
 
         val sessionToken = SessionToken(this, ComponentName(this, RadioService::class.java))
@@ -122,6 +120,7 @@ class MainActivity : AppCompatActivity() {
                     adapter.setPlayingStation(title)
                 }
                 override fun onPlayerError(error: PlaybackException) {
+                    Log.e("WaveBox", "Player error: ${error.errorCodeName}", error)
                     Toast.makeText(this@MainActivity, "Ошибка: ${error.errorCodeName}", Toast.LENGTH_LONG).show()
                     nowPlayingText.text = "Ошибка воспроизведения"
                 }
@@ -135,11 +134,19 @@ class MainActivity : AppCompatActivity() {
         }
 
         stopButton.setOnClickListener {
-            controller?.stop()
-            controller?.clearMediaItems()
-            nowPlayingText.text = "Выберите станцию"
-            adapter.setPlayingStation(null)
-            updatePlayPauseButton(false)
+            try {
+                controller?.let { ctrl ->
+                    if (ctrl.currentMediaItem != null) {
+                        ctrl.stop()
+                        ctrl.clearMediaItems()
+                    }
+                }
+                nowPlayingText.text = "Выберите станцию"
+                adapter.setPlayingStation(null)
+                updatePlayPauseButton(false)
+            } catch (e: Exception) {
+                Log.e("WaveBox", "Error stopping", e)
+            }
         }
     }
 
@@ -158,7 +165,6 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         stations = loadedStations
                         adapter.updateStations(stations)
-                        // Если сервер ответил, но список пустой — покажем сообщение
                         if (stations.isEmpty()) {
                             Toast.makeText(this, "Список станций пуст", Toast.LENGTH_SHORT).show()
                         }
@@ -202,20 +208,35 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun playStation(station: Station) {
-        nowPlayingText.text = "Загрузка: ${station.name}..."
-        val mediaMetadata = MediaMetadata.Builder()
-            .setTitle(station.name)
-            .setArtist(station.desc)
-            .build()
-        val mediaItem = MediaItem.Builder()
-            .setUri(station.url)
-            .setMediaMetadata(mediaMetadata)
-            .build()
-        controller?.setMediaItem(mediaItem)
-        controller?.prepare()
-        controller?.play()
-        adapter.setPlayingStation(station.name)
+    // БЕЗОПАСНЫЙ ЗАПУСК СТАНЦИИ
+    private fun playStationSafe(station: Station) {
+        if (controller == null) {
+            Toast.makeText(this, "Плеер ещё не готов", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (station.url.isBlank()) {
+            Toast.makeText(this, "У станции нет ссылки", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        try {
+            nowPlayingText.text = "Загрузка: ${station.name}..."
+            val mediaMetadata = MediaMetadata.Builder()
+                .setTitle(station.name)
+                .setArtist(station.desc)
+                .build()
+            val mediaItem = MediaItem.Builder()
+                .setUri(station.url)
+                .setMediaMetadata(mediaMetadata)
+                .build()
+            controller?.setMediaItem(mediaItem)
+            controller?.prepare()
+            controller?.play()
+            adapter.setPlayingStation(station.name)
+        } catch (e: Exception) {
+            Log.e("WaveBox", "Error playing station", e)
+            Toast.makeText(this, "Ошибка запуска: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onDestroy() {

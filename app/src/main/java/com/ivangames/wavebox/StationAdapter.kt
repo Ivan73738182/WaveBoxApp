@@ -55,7 +55,6 @@ class StationAdapter(
             holder.icon.text = "📻"
         }
 
-        // Настраиваем сердечко
         if (repository.isFavorite(station)) {
             holder.favoriteBtn.setImageResource(android.R.drawable.btn_star_big_on)
             holder.favoriteBtn.setColorFilter(Color.parseColor("#FF4081"))
@@ -66,7 +65,7 @@ class StationAdapter(
 
         holder.favoriteBtn.setOnClickListener {
             onFavoriteToggle(station)
-            notifyItemChanged(position) // Обновляем иконку
+            notifyItemChanged(position)
         }
 
         holder.itemView.setOnClickListener { onClick(station) }
