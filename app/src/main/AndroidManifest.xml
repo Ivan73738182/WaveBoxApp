@@ -23,7 +23,8 @@
             </intent-filter>
         </activity>
 
-        <!-- Наш фоновый сервис -->
+        <activity android:name=".PlayerActivity" />
+
         <service
             android:name=".RadioService"
             android:foregroundServiceType="mediaPlayback"
