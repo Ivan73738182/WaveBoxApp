@@ -30,6 +30,7 @@ import com.google.gson.reflect.TypeToken
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
@@ -153,14 +154,24 @@ class MainActivity : AppCompatActivity() {
     private fun loadStationsFromServer() {
         Executors.newSingleThreadExecutor().execute {
             try {
-                val client = OkHttpClient()
+                Log.d("WaveBox", "Начинаем загрузку станций с: $serverUrl")
+                
+                // Настраиваем клиент с увеличенным таймаутом
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(30, TimeUnit.SECONDS)
+                    .readTimeout(30, TimeUnit.SECONDS)
+                    .build()
+                
                 val request = Request.Builder().url(serverUrl).build()
                 val response = client.newCall(request).execute()
+                Log.d("WaveBox", "Ответ сервера: ${response.code}")
 
                 if (response.isSuccessful) {
                     val json = response.body?.string()
+                    Log.d("WaveBox", "Получен JSON: $json")
                     val type = object : TypeToken<List<Station>>() {}.type
                     val loadedStations: List<Station> = Gson().fromJson(json, type)
+                    Log.d("WaveBox", "Загружено станций: ${loadedStations.size}")
 
                     runOnUiThread {
                         stations = loadedStations
@@ -170,17 +181,18 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 } else {
-                    Log.e("WaveBox", "Server error: ${response.code}")
+                    Log.e("WaveBox", "Ошибка сервера: ${response.code}")
                     runOnUiThread { showFallbackStations() }
                 }
             } catch (e: Exception) {
-                Log.e("WaveBox", "Error loading stations", e)
+                Log.e("WaveBox", "Ошибка загрузки станций", e)
                 runOnUiThread { showFallbackStations() }
             }
         }
     }
 
     private fun showFallbackStations() {
+        Log.d("WaveBox", "Показываем станции по умолчанию")
         stations = listOf(
             Station("Европа Плюс", "Популярная музыка", "http://ep128.hostingradio.ru:8030/ep128"),
             Station("Ретро FM", "Музыка 80-х и 90-х", "http://retroserver.streamr.ru:8043/retro256.mp3")
@@ -208,7 +220,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // БЕЗОПАСНЫЙ ЗАПУСК СТАНЦИИ
     private fun playStationSafe(station: Station) {
         if (controller == null) {
             Toast.makeText(this, "Плеер ещё не готов", Toast.LENGTH_SHORT).show()
@@ -234,7 +245,7 @@ class MainActivity : AppCompatActivity() {
             controller?.play()
             adapter.setPlayingStation(station.name)
         } catch (e: Exception) {
-            Log.e("WaveBox", "Error playing station", e)
+            Log.e("WaveBox", "Ошибка запуска станции", e)
             Toast.makeText(this, "Ошибка запуска: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
